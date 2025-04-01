@@ -1,5 +1,13 @@
 # 3D Reconstruction Pipeline
 
+这个dockerfile built的时候，有几个地方需要注意一下：
+1，每一个RUN命令都是一层，执行‘docker-compose built'的时候，从修改的地方开始，之后每一行代码都会重新执行，而之前的会使用缓存。所以要把那些稳定的，耗时长的RUN命令放到前面。因为并不是built一次就成功了，重复下载会浪费大量的时间。。。
+
+2，有很多种方式获得可执行程序？
+  源码编译（这个一般从github上面）
+  docker镜像（通过docker命令获取）。现在的经验是简单的（依赖少的）建议通过docker镜像（如果有点话），复杂的尽量还是通过源码编译的方式，因为有大量的依赖，使用docker镜像无法正常运行
+
+
 This repository contains a Docker-based 3D reconstruction pipeline using COLMAP and OpenMVS.
 
 ## Setup
