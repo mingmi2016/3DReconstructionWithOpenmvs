@@ -1,7 +1,9 @@
-version: '3'
+version: '3.8'
 services:
   mvs:
-    build: .
+    build:
+      context: .
+      network: host
     volumes:
       - .:/workspace
     ports:
@@ -9,3 +11,14 @@ services:
     tty: true
     stdin_open: true
     command: tail -f /dev/null
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    network_mode: "host"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all

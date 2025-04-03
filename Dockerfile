@@ -1,19 +1,19 @@
-FROM ubuntu:22.04
+FROM nvidia/cuda:11.8.0-devel-ubuntu22.04
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Update package lists in a separate layer
-RUN apt-get update
+# Add retry mechanism for apt-get and set mirror
+RUN echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries && \
+    sed -i 's/archive.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list && \
+    sed -i 's/security.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list
 
-# Install basic build tools
-RUN apt-get install -y \
+# First layer: Install all stable system dependencies
+RUN apt-get update && apt-get install -y \
     git \
     cmake \
-    build-essential
-
-# Install stable dependencies that rarely change
-RUN apt-get install -y \
+    build-essential \
+    wget \
     libboost-all-dev \
     libeigen3-dev \
     libflann-dev \
@@ -21,22 +21,29 @@ RUN apt-get install -y \
     libmetis-dev \
     libsqlite3-dev \
     libglew-dev \
-    libqt5opengl5-dev
-
-# Install Google libraries
-RUN apt-get install -y \
+    libqt5opengl5-dev \
     libgoogle-glog-dev \
-    libgflags-dev
-
-# Install OpenCV and Ceres
-RUN apt-get install -y \
+    libgflags-dev \
     libopencv-dev \
-    libceres-dev
-
-# Install CGAL dependencies
-RUN apt-get install -y \
+    libceres-dev \
     libgmp-dev \
-    libmpfr-dev
+    libmpfr-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up basic environment variables
+ENV PATH="/usr/local/bin:/usr/local/cuda/bin:${PATH}" \
+    LD_LIBRARY_PATH="/usr/local/lib:/usr/local/cuda/lib64:${LD_LIBRARY_PATH}" \
+    CUDA_ARCHITECTURES="86" \
+    CUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda \
+    OpenMVS_USE_CUDA=ON \
+    CMAKE_CUDA_ARCHITECTURES=86
+
+# Create working directory early
+WORKDIR /workspace
+
+# Copy COLMAP and check installation scripts
+COPY install_colmap.sh check_install.sh /opt/
+RUN chmod +x /opt/install_colmap.sh /opt/check_install.sh
 
 # Install CGAL from source
 RUN cd /opt && \
@@ -44,40 +51,28 @@ RUN cd /opt && \
     cd cgal && \
     mkdir build && \
     cd build && \
-    cmake .. && \
-    make -j$(nproc) && \
+    cmake -DCMAKE_BUILD_TYPE=Release \
+          -DCGAL_HEADER_ONLY=ON \
+          -DCMAKE_CXX_FLAGS="-O3 -DNDEBUG" \
+          -DCMAKE_INSTALL_PREFIX=/usr \
+          -DWITH_CGAL_Qt5=OFF \
+          -DWITH_CGAL_ImageIO=ON \
+          -DWITH_CGAL_Core=ON \
+          .. && \
+    make -j4 && \
     make install && \
+    ldconfig && \
     cd ../.. && \
     rm -rf cgal && \
-    ldconfig && \
-    echo "CGAL installation completed" && \
-    ls -la /usr/local/include/CGAL
+    echo "CGAL installation completed"
 
-# Clean up in a separate layer
-RUN rm -rf /var/lib/apt/lists/*
+# Fourth layer: Configure and install COLMAP
+RUN sed -i 's/cmake \.\./cmake .. -DCMAKE_BUILD_TYPE=Release -DCUDA_ENABLED=ON -DCUDA_ARCHITECTURES=86 -DCMAKE_CUDA_ARCHITECTURES=86/' /opt/install_colmap.sh && \
+    sed -i 's/make -j/make -j4/' /opt/install_colmap.sh && \
+    /opt/install_colmap.sh
 
-# Set up environment variables
-ENV PATH="/usr/local/bin:${PATH}"
-ENV LD_LIBRARY_PATH="/usr/local/lib:${LD_LIBRARY_PATH}"
-
-# Create a working directory
-WORKDIR /workspace
-
-# Copy COLMAP installation script
-COPY install_colmap.sh /opt/
-RUN chmod +x /opt/install_colmap.sh
-
-# Install COLMAP
-RUN /opt/install_colmap.sh
-
-# Copy OpenMVS installation script
+# Final layer: Copy and install OpenMVS
 COPY install_openmvs.sh /opt/
-RUN chmod +x /opt/install_openmvs.sh
-
-# Install OpenMVS (this layer will be rebuilt if install_openmvs.sh changes)
-RUN /opt/install_openmvs.sh
-
-# Create a script to check installation
-COPY check_install.sh /opt/
-RUN chmod +x /opt/check_install.sh 
+RUN chmod +x /opt/install_openmvs.sh && \
+    /opt/install_openmvs.sh
 

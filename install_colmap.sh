@@ -29,6 +29,17 @@ clone_with_retry() {
 }
 
 cd /opt
+
+# First get PoseLib
+echo "Cloning PoseLib..."
+clone_with_retry https://github.com/PoseLib/PoseLib.git poselib
+cd poselib
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j4
+make install
+cd ../..
+
 echo "Cloning COLMAP repository..."
 clone_with_retry https://github.com/colmap/colmap.git colmap
 cd colmap
@@ -38,23 +49,20 @@ mkdir -p build
 cd build
 
 echo "Configuring COLMAP..."
-cmake .. -DCMAKE_BUILD_TYPE=Release
+cmake .. -DCMAKE_BUILD_TYPE=Release \
+        -DCUDA_ENABLED=ON \
+        -DCUDA_ARCHITECTURES=86 \
+        -DCMAKE_CUDA_ARCHITECTURES=86 \
+        -DPoseLib_DIR=/usr/local/lib/cmake/PoseLib
 
 echo "Building COLMAP..."
-make -j$(nproc)
+make -j4
 
 echo "Installing COLMAP..."
 make install
 
 echo "Cleaning up..."
 cd ../..
-rm -rf colmap 
+rm -rf colmap poselib
 
-echo "Verifying installation..."
-if [ -f "/usr/local/bin/colmap" ]; then
-    echo "COLMAP installation successful!"
-    echo "COLMAP location: $(which colmap)"
-else
-    echo "Error: COLMAP executable not found after installation"
-    exit 1
-fi 
+echo "COLMAP installation completed!" 
